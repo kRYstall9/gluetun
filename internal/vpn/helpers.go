@@ -33,9 +33,19 @@ func (l *Loop) waitForError(ctx context.Context,
 	}
 }
 
-func (l *Loop) crashed(ctx context.Context, err error) {
+// crashed sets the health server error, signals the crashed status,
+// and returns true if the VPN loop should retry, or false if it
+// should stop retrying (when HEALTH_RESTART_VPN is off).
+func (l *Loop) crashed(ctx context.Context, err error) (shouldRetry bool) {
+	l.healthServer.SetError(err)
 	l.signalOrSetStatus(constants.Crashed)
+	if !*l.healthSettings.RestartVPN {
+		l.logger.Error(err.Error())
+		l.logger.Info("VPN will not be restarted because HEALTH_RESTART_VPN is set to off")
+		return false
+	}
 	l.logAndWait(ctx, err)
+	return true
 }
 
 func (l *Loop) signalOrSetStatus(status models.LoopStatus) {

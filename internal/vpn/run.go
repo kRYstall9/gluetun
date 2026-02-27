@@ -43,7 +43,9 @@ func (l *Loop) Run(ctx context.Context, done chan<- struct{}) {
 				providerConf, settings, l.ipv6Supported, subLogger)
 		}
 		if err != nil {
-			l.crashed(ctx, err)
+			if !l.crashed(ctx, err) {
+				return
+			}
 			continue
 		}
 		tunnelUpData := tunnelUpData{
@@ -71,7 +73,9 @@ func (l *Loop) Run(ctx context.Context, done chan<- struct{}) {
 
 		if err := l.waitForError(ctx, waitError); err != nil {
 			vpnCancel()
-			l.crashed(ctx, err)
+			if !l.crashed(ctx, err) {
+				return
+			}
 			continue
 		}
 
@@ -107,7 +111,14 @@ func (l *Loop) Run(ctx context.Context, done chan<- struct{}) {
 
 				l.cleanup()
 				vpnCancel()
+				l.healthServer.SetError(err)
 				l.statusManager.SetStatus(constants.Crashed)
+				if !*l.healthSettings.RestartVPN {
+					l.logger.Error(err.Error())
+					l.logger.Info("VPN will not be restarted because HEALTH_RESTART_VPN is set to off")
+					l.statusManager.Unlock()
+					return
+				}
 				l.logAndWait(ctx, err)
 				stayHere = false
 
